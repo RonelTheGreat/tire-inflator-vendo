@@ -35,7 +35,7 @@ const byte lcdNumCols = 4;
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(lcdI2cAddress, lcdNumRows, lcdNumCols);
 
 // Pressure sensor
-const byte pressureInputPin = A0;
+const byte pressureInputPin = A1;
 
 // Coin slot
 const int coinPin = 2;
@@ -209,6 +209,8 @@ bool hasStartedPressing = false;
 // main timing
 unsigned long timeElapsed = 0;
 
+byte tirePressureSamples = 0;
+byte maxTirePressureSampleCount = 2;
 //-------------------------- END GLOBAL VARIABLES --------------------------------
 
 
@@ -388,12 +390,18 @@ void keypadEventListener() {
   if (!strcmp(currentScreen, "inputPressure")) {
     // confirm
     if (key == 'C') {
-      finalPressure = atoi(inputPressure);
+      finalPressure = atoi(inputPressure) + tirePressure;
+      Serial.print(F("Final pressure = tire pressure + desired pressure >> "));
+      Serial.print(tirePressure);
+      Serial.print(F(" + "));
+      Serial.print(atoi(inputPressure));
+      Serial.print(F(" = "));
+      Serial.println(finalPressure);
+      
       if (finalPressure == 0) {
         return;
       }
       strcpy(currentScreen, "desiredPressure");
-      clearInputPressure();
       return;
     }
     // clear
@@ -429,16 +437,16 @@ void keypadEventListener() {
     // confirm
     if (key == 'C') {
       // automatic
-      if (!strcmp(mode, "auto")) {
+//      if (!strcmp(mode, "auto")) {
         // read tire pressure
         hasStartedGettingPressureSamples = true;
         strcpy(currentScreen, "readingPressure");
         return;
 
         // manual
-      } else {
-        strcpy(currentScreen, "inputPressure");
-      }
+//      } else {
+//        strcpy(currentScreen, "inputPressure");
+//      }
     }
     //  back
     if (key == '*') {
@@ -450,8 +458,12 @@ void keypadEventListener() {
   // display pressure
   if (!strcmp(currentScreen, "displayPressure")) {
     if (key == 'C') {
-      strcpy(currentScreen, "vehicleType");
-      return;
+      if (!strcmp(mode, "auto")) {
+        strcpy(currentScreen, "vehicleType");
+        return;
+      } else {
+        strcpy(currentScreen, "inputPressure");
+      }
     }
   }
 
@@ -682,6 +694,7 @@ void currentScreenProvider() {
 
   if (!strcmp(currentScreen, "desiredPressure") && strcmp(prevScreen, "desiredPressure")) {
     lcd.clear();
+    lcd.noBlink();
     desiredPressureScreen();
   }
 
@@ -930,7 +943,7 @@ void recommendedPressureScreen() {
 // desired pressure (manual)
 void desiredPressureScreen() {
   if (!strcmp(mode, "manual")) {
-    int finalPressureToInt = static_cast<int>(finalPressure);
+    int finalPressureToInt = atoi(inputPressure);
 
     lcd.setCursor(0, 0);
     lcd.print("Desired pressure is");
@@ -938,7 +951,7 @@ void desiredPressureScreen() {
     lcd.print(finalPressureToInt);
 
     // "PSI" word placement
-    lcd.setCursor(finalPressureDigitCount() + 1, 1);
+    lcd.setCursor(strlen(inputPressure) + 1, 1);
     lcd.print("PSI");
 
     lcd.setCursor(0, 2);
@@ -958,8 +971,15 @@ void insertCoinScreen() {
 void pressureStatusScreen() {
   lcd.setCursor(3, 0);
   lcd.print("Injecting air");
-  lcd.setCursor(2, 2);
+  lcd.setCursor(2, 1);
   lcd.print("Please wait ...");
+}
+// Display current pressure
+void displayCurrentPressure() {
+  int currentPressureToInt = static_cast<int>(currentPressure);
+  lcd.setCursor(0, 3);
+  lcd.print("Current PSI ");
+  lcd.print(currentPressureToInt);
 }
 
 // Done
@@ -983,6 +1003,10 @@ void restart() {
   prevScreen[0] = NULL;
   tirePressure = 0;
   finalPressure = 0;
+  currentPressure = 0;
+  total = 0;
+  clearPressureSamples();
+  clearInputPressure();
 }
 // handles reset owner number button
 void resetOwnerNumber() {
@@ -1006,6 +1030,7 @@ void resetOwnerNumber() {
     }
   }
 }
+
 
 //------------------------------- END RESTART/RESET -------------------------------
 
@@ -1091,13 +1116,14 @@ void getTirePressure() {
 
       // if we're at the end of the array...
       if (readIndex >= numOfPressureSamples) {
-        tirePressure = total / numOfPressureSamplesInFloat;
         strcpy(currentScreen, "displayPressure");
         hasStartedGettingPressureSamples = false;
         Serial.print(F("Initial pressure inside the tire >> "));
         Serial.println(tirePressure);
         readIndex = 0;
       }
+
+      tirePressure = total / numOfPressureSamplesInFloat;
     }
   }
 }
@@ -1212,15 +1238,22 @@ void injectAir() {
       lastPressureRead = timeElapsed;
       currentPressure = calcTirePressure();
       if (currentPressure >= finalPressure) {
-        lastRestart = timeElapsed;
-        digitalWrite(buzzerPin, LOW); // ON state
-        digitalWrite(relayPin, HIGH); // OFF state
-        strcpy(currentScreen, "done");
-        hasInsertedCoin = false;
-        restartRoutine = true;
-        Serial.print(F("Done injecting air! Current tire pressure >> "));
-        Serial.println(currentPressure);
+        if (tirePressureSamples >= maxTirePressureSampleCount) {
+          lastRestart = timeElapsed;
+          digitalWrite(buzzerPin, LOW); // ON state
+          digitalWrite(relayPin, HIGH); // OFF state
+          strcpy(currentScreen, "done");
+          hasInsertedCoin = false;
+          restartRoutine = true;
+          tirePressureSamples = 0;
+          Serial.print(F("Done injecting air! Current tire pressure >> "));
+          Serial.println(currentPressure);
+        } else {
+          Serial.println(F("Not yet."));
+          tirePressureSamples++;
+        }
       } else {
+        displayCurrentPressure();
         Serial.print(F("Injecting air; Current pressure >> "));
         Serial.println(currentPressure);
       }
@@ -1521,6 +1554,7 @@ bool checkIfMidnight(char *currentTime) {
 
 
 //------------------------------ HELPER FUNCTIONS  --------------------------------
+
 bool sendSms(char *message) {
   if (!hasStartedSendingSms) {
     strcpy(currentCommand, "txtMode");
@@ -1536,20 +1570,24 @@ bool sendSms(char *message) {
   if (timeElapsed - startedAt >= commandInterval && hasStartedSendingSms) {
     startedAt = timeElapsed;
     if (!strcmp(prevCommand, "txtMode")) {
+      char setContactCommand[32];
+      char ownerNumber[16];
+      EEPROM.get(ownerNumberAddress, ownerNumber);
+      sprintf(setContactCommand, "AT+CMGS=\"%s\"\r\n", ownerNumber);
       strcpy(currentCommand, "contact");
       Serial.println("Setting contact");
-      //      gsmSerial.println("AT+CMGS=\"+639771064377\"\r");
+      gsmSerial.print(setContactCommand);
     }
     if (!strcmp(currentCommand, "contact") && strcmp(prevCommand, "txtMode")) {
       Serial.print("Setting reply >> ");
       Serial.println(message);
       strcpy(currentCommand, "message");
-      //      gsmSerial.println(message);
+      gsmSerial.println(message);
     }
     if (!strcmp(currentCommand, "message") && strcmp(prevCommand, "contact")) {
       Serial.println("Writing end character");
       strcpy(currentCommand, "end");
-      //      gsmSerial.println((char)26);
+      gsmSerial.println((char)26);
     }
     if (!strcmp(currentCommand, "end") && strcmp(prevCommand, "message")) {
       currentCommand[0] = NULL;
@@ -1614,5 +1652,6 @@ void readLine(byte maxLineCount) {
     }
   }
 }
+
 
 //---------------------------- END HELPER FUNCTIONS -------------------------------
