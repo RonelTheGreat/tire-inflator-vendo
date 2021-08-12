@@ -380,7 +380,6 @@ void keypadEventListener() {
 
     if (key == 'B') {
       strcpy(mode, "manual");
-      //      strcpy(currentScreen, "inputPressure");
       strcpy(currentScreen, "plugInNozzle");
       return;
     }
@@ -397,7 +396,7 @@ void keypadEventListener() {
       Serial.print(atoi(inputPressure));
       Serial.print(F(" = "));
       Serial.println(finalPressure);
-      
+
       if (finalPressure == 0) {
         return;
       }
@@ -436,17 +435,10 @@ void keypadEventListener() {
   if (!strcmp(currentScreen, "plugInNozzle")) {
     // confirm
     if (key == 'C') {
-      // automatic
-//      if (!strcmp(mode, "auto")) {
-        // read tire pressure
-        hasStartedGettingPressureSamples = true;
-        strcpy(currentScreen, "readingPressure");
-        return;
-
-        // manual
-//      } else {
-//        strcpy(currentScreen, "inputPressure");
-//      }
+      // read tire pressure
+      hasStartedGettingPressureSamples = true;
+      strcpy(currentScreen, "readingPressure");
+      return;
     }
     //  back
     if (key == '*') {
@@ -1076,6 +1068,7 @@ void insertCoinInterrupt() {
 
 
 //------------------------------- PRESSURE ----------------------------------------
+
 
 void calcFinalPressure(byte standardPressure) {
   finalPressure = standardPressure - tirePressure;
