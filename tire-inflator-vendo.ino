@@ -171,6 +171,7 @@ unsigned long startedAt = 0;
 
 // Get current time routine
 char currentRoutine[18] = "reachedCoinLimit";
+bool hasBeenNotifiedMidnight = false;
 
 // Get message routine
 bool hasBeenSetToTextMode = false;
@@ -1455,6 +1456,7 @@ void sendIncome() {
     if (replyCount >= maxReplyCount) {
       //      strcpy(currentRoutine, "getMessage");
       strcpy(currentRoutine, "reachedCoinLimit");
+      hasBeenNotifiedMidnight = true;
       replyCount = 0;
       reply[0] = NULL;
     }
@@ -1521,19 +1523,14 @@ void getCurrentTime() {
 bool checkIfMidnight(char *currentTime) {
   const char delimiter[] = ":";
   char *_hour;
-  char *_minute;
-  char *_second;
   bool isMidnight = false;
 
   _hour = strtok(currentTime, delimiter);
-  if (_hour != NULL) {
-    _minute = strtok(NULL, delimiter);
-    if (_minute != NULL && atoi(_minute) % 2 != 0) {
-      isMidnight = true;
-      //      _second = strtok(NULL, delimiter);
-      //      if (atoi(_second) >= 10 && atoi(_second) <= 15) {
-      //        isMidnight = true;
-      //      }
+  if (_hour != NULL && _hour == 0) {
+    isMidnight = true;
+  } else {
+    if (hasBeenNotifiedMidnight) {
+      hasBeenNotifiedMidnight = false;
     }
   }
 
